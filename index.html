@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Duel de bandes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Menu principal -->
+  <section id="menu" class="screen">
+    <h1>Duel de bandes</h1>
+    <p>Probabilité de tirage de chaque valeur (commun aux deux joueurs)</p>
+    <div id="sliders"></div>
+    <div class="row">
+      <button id="btn-balanced">Équilibré</button>
+      <button id="btn-start" class="primary">Lancer une partie</button>
+    </div>
+  </section>
+
+  <!-- Plateau de jeu -->
+  <section id="game" class="screen hidden">
+    <header id="infos"></header>
+    <div id="opp-hand" class="hand small"></div>
+    <div id="board"></div>
+    <div id="message"></div>
+    <div id="actions"><button id="btn-pass" class="primary">Passer</button></div>
+    <div id="my-hand" class="hand"></div>
+  </section>
+
+  <!-- Overlay générique (pièce, passage d'appareil, fin de manche, fin de partie) -->
+  <div id="overlay" class="hidden"><div id="overlay-box"></div></div>
+
+  <script src="game.js"></script>
+</body>
+</html>
