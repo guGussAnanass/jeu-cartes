@@ -15,7 +15,25 @@
     <div class="row">
       <button id="btn-balanced">Équilibré</button>
       <button id="btn-start" class="primary">Lancer une partie</button>
+      <button id="btn-online">Jouer en ligne</button>
     </div>
+  </section>
+
+  <!-- Menu multijoueur en ligne -->
+  <section id="online" class="screen hidden">
+    <h1>Jouer en ligne</h1>
+    <p>L'hôte (J1) utilise les curseurs de probabilité du menu principal.</p>
+    <div class="row"><button id="btn-create" class="primary">Créer une partie</button></div>
+    <div id="room-box" class="row hidden">
+      Code de la salle : <span id="room-code"></span>
+      <button id="btn-copy">Copier</button>
+    </div>
+    <div class="row">
+      <input id="join-code" maxlength="6" placeholder="Code" autocomplete="off">
+      <button id="btn-join">Rejoindre</button>
+    </div>
+    <div id="online-status" class="row"></div>
+    <div class="row"><button id="btn-online-back">Retour</button></div>
   </section>
 
   <!-- Plateau de jeu -->
@@ -31,6 +49,10 @@
   <!-- Overlay générique (pièce, passage d'appareil, fin de manche, fin de partie) -->
   <div id="overlay" class="hidden"><div id="overlay-box"></div></div>
 
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"
+          integrity="sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR"
+          crossorigin="anonymous"></script>
   <script src="game.js"></script>
+  <script src="network.js"></script>
 </body>
 </html>

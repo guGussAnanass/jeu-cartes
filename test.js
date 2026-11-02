@@ -3,8 +3,9 @@
 const fs = require('fs');
 const assert = require('assert');
 const src = fs.readFileSync(__dirname + '/game.js', 'utf8').split('PARTIE 2 : AFFICHAGE')[0].replace(/\/\*[-\s]*$/, '');
-const L = new Function(src + `
-return { newGame, playCard, passTurn, nextRound, total, MAX_FIELD };`)();
+const net = fs.readFileSync(__dirname + '/network.js', 'utf8').split('PARTIE B : RÉSEAU')[0].replace(/\/\*[-\s]*$/, '');
+const L = new Function(src + net + `
+return { newGame, playCard, passTurn, nextRound, total, MAX_FIELD, applyAction, toView };`)();
 
 let fails = 0;
 function test(name, fn) {
@@ -162,6 +163,46 @@ test('victoire de partie en atteignant la zone 1 ennemie', () => {
   L.nextRound(s);
   assert.strictEqual(s.gameWinner, 0);
   assert.strictEqual(s.phase, 'gameOver');
+});
+
+test('réseau : la vue de l\'invité ne contient jamais la main de l\'hôte', () => {
+  const s = game([7, 8, 9], [1, 2]);
+  const v = L.toView(s, 1);
+  assert.deepStrictEqual(v.hands[1], [1, 2]);
+  assert.deepStrictEqual(v.hands[0], [null, null, null]);
+  assert.strictEqual(v.weights, undefined);
+  assert.ok(!JSON.stringify(v.hands[0]).match(/[0-9]/));
+  const vh = L.toView(s, 0);
+  assert.deepStrictEqual(vh.hands[1], [null, null]);
+});
+
+test('réseau : actions invalides refusées (tour, carte inexistante, limite, inconnue)', () => {
+  const s = game([1, 1, 1, 1, 1, 1], [9, 9, 9, 9, 9, 9]);
+  assert.ok(L.applyAction(s, 1, { kind: 'pass' }).error);           // pas son tour
+  assert.ok(L.applyAction(s, 0, { kind: 'play', idx: 99 }).error);  // carte inexistante
+  assert.ok(L.applyAction(s, 0, { kind: 'play', idx: -1 }).error);
+  assert.ok(L.applyAction(s, 0, { kind: 'play', idx: '0' }).error);
+  assert.ok(L.applyAction(s, 0, { kind: 'zzz' }).error);
+  assert.ok(L.applyAction(s, 0, null).error);
+  assert.strictEqual(s.hands[0].length, 6);                          // rien n'a été joué
+  s.played[0] = [1, 1, 1, 1]; s.played[1] = [9];
+  assert.ok(/Limite/.test(L.applyAction(s, 0, { kind: 'play', idx: 0 }).error));
+  assert.strictEqual(s.played[0].length, 4);
+});
+
+test('réseau : fin de manche synchronisée via « continue »', () => {
+  const s = game([5, 1], [3, 1]);
+  assert.deepStrictEqual(L.applyAction(s, 0, { kind: 'play', idx: 0 }), { msg: '' });
+  assert.ok(L.applyAction(s, 0, { kind: 'pass' }).msg);             // "J1 a passé."
+  assert.strictEqual(s.active, 1);
+  L.applyAction(s, 1, { kind: 'play', idx: 0 });                    // J2 3 < 5
+  L.applyAction(s, 1, { kind: 'pass' });                            // J2 perd
+  assert.strictEqual(s.phase, 'roundEnd');
+  assert.ok(L.applyAction(s, 0, { kind: 'play', idx: 0 }).error);   // bloqué pendant le résumé
+  assert.ok(!L.applyAction(s, 1, { kind: 'continue' }).error);
+  assert.strictEqual(s.phase, 'play');
+  assert.deepStrictEqual(s.played[0], [5]);
+  assert.ok(L.applyAction(s, 0, { kind: 'continue' }).ignore);      // double clic ignoré
 });
 
 console.log(fails ? `\n${fails} test(s) en échec` : '\nTous les tests passent');

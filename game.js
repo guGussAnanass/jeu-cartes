@@ -164,6 +164,9 @@ let state = null;       // état de la partie en cours
 let weights = Array(10).fill(5);
 let handHidden = true;  // main cachée tant que l'appareil n'a pas été passé
 let message = '';
+let online = null;      // null = mode local ; sinon {role, me, ...} (voir network.js)
+let overlayKind = '';   // type de l'overlay affiché (pour les synchros réseau)
+let overlaySeq = 0;     // change à chaque overlay : invalide les timers périmés
 
 /* ----- Menu ----- */
 function buildSliders() {
@@ -193,12 +196,11 @@ function updatePercents() {
 }
 
 function showScreen(name) {
-  $('menu').classList.toggle('hidden', name !== 'menu');
-  $('game').classList.toggle('hidden', name !== 'game');
+  ['menu', 'game', 'online'].forEach(id => $(id).classList.toggle('hidden', id !== name));
 }
 
 /* ----- Overlay ----- */
-function showOverlay(html, buttons) {
+function showOverlay(html, buttons, kind = '') {
   const box = $('overlay-box');
   box.innerHTML = html;
   buttons.forEach(([label, fn]) => {
@@ -208,29 +210,43 @@ function showOverlay(html, buttons) {
     b.onclick = () => { hideOverlay(); fn(); };
     box.appendChild(b);
   });
+  overlayKind = kind;
+  overlaySeq++;
   $('overlay').classList.remove('hidden');
 }
-const hideOverlay = () => $('overlay').classList.add('hidden');
+function hideOverlay() {
+  overlayKind = '';
+  overlaySeq++;
+  $('overlay').classList.add('hidden');
+}
 
 /* ----- Démarrage ----- */
+/** Lancer de pièce animé. onDone : appelé au clic sur « Continuer » (ou fermeture auto si auto). */
+function showCoin(first, onDone, auto, label) {
+  showOverlay(`<p>Tirage au sort du premier joueur…</p><div class="coin">?</div><p id="coin-res">&nbsp;</p>`, [], 'coin');
+  const id = overlaySeq;
+  setTimeout(() => {
+    if (overlaySeq !== id) return; // l'overlay a changé entre-temps
+    $('coin-res').textContent = label;
+    document.querySelector('.coin').textContent = first === 0 ? 'J1' : 'J2';
+    if (auto) { setTimeout(() => { if (overlaySeq === id) hideOverlay(); }, 1500); return; }
+    const b = document.createElement('button');
+    b.textContent = 'Continuer';
+    b.className = 'primary';
+    b.onclick = () => { hideOverlay(); onDone(); };
+    $('overlay-box').appendChild(b);
+  }, 1500);
+}
+
 function startGame() {
+  online = null;
   const first = Math.random() < 0.5 ? 0 : 1;
   state = newGame(weights.slice(), first);
   message = '';
   showScreen('game');
   handHidden = true;
   render();
-  // Lancer de pièce animé : face = J1, pile = J2
-  showOverlay(`<p>Tirage au sort du premier joueur…</p><div class="coin">?</div><p id="coin-res">&nbsp;</p>`, []);
-  setTimeout(() => {
-    $('coin-res').textContent = `J${first + 1} commence !`;
-    document.querySelector('.coin').textContent = first === 0 ? 'J1' : 'J2';
-    const b = document.createElement('button');
-    b.textContent = 'Continuer';
-    b.className = 'primary';
-    b.onclick = () => { hideOverlay(); askHandoff(); };
-    $('overlay-box').appendChild(b);
-  }, 1500);
+  showCoin(first, askHandoff, false, `J${first + 1} commence !`);
 }
 
 /** Écran « passe l'appareil » : cache la main jusqu'à confirmation. */
@@ -243,6 +259,7 @@ function askHandoff() {
 
 /* ----- Actions du joueur ----- */
 function onCardClick(idx) {
+  if (online) return onlineCardClick(idx);
   if (state.phase !== 'play' || handHidden) return;
   if (!playCard(state, idx)) {
     message = `Limite de ${MAX_FIELD} cartes atteinte : tu ne peux plus poser, seulement passer.`;
@@ -254,6 +271,7 @@ function onCardClick(idx) {
 }
 
 function onPass() {
+  if (online) return onlinePass();
   if (state.phase !== 'play' || handHidden) return;
   const before = state.active;
   passTurn(state);
@@ -308,26 +326,30 @@ function makeCard(value, cls = '') {
 
 function render() {
   const s = state;
-  const me = s.active, opp = other(me);
+  // En ligne : on se place toujours du point de vue de son propre joueur
+  const me = online ? online.me : s.active, opp = other(me);
+  const flip = online && online.me === 1; // l'invité voit son camp en bas
+  const myTurn = !online || s.active === me;
 
   // Bandeau d'infos
   $('infos').innerHTML = `
     <span>Manche ${s.round}</span>
-    <span class="active">Tour : J${me + 1}</span>
+    <span class="active">Tour : J${s.active + 1}${online && myTurn ? ' (toi)' : ''}</span>
     <span>Cartes en main — J1 : ${s.hands[0].length} | J2 : ${s.hands[1].length}</span>
     <span>Totaux — J1 : ${total(s, 0)} | J2 : ${total(s, 1)}</span>
     <span>Terrain — J1 : ${s.played[0].length}/${MAX_FIELD} | J2 : ${s.played[1].length}/${MAX_FIELD}</span>`;
 
-  // Six bandes, de haut (1) en bas (6)
+  // Six bandes affichées de haut (1) en bas (6)
   const board = $('board');
   board.innerHTML = '';
-  for (let band = 1; band <= 6; band++) {
-    const zone = band <= 3 ? band : 7 - band;
-    const owner = band <= 3 ? 1 : 0; // J2 en haut, J1 en bas
+  for (let row = 1; row <= 6; row++) {
+    const band = flip ? 7 - row : row; // bande réelle affichée sur cette ligne
+    const zone = row <= 3 ? row : 7 - row;
+    const owner = band <= 3 ? 1 : 0; // J2 a les bandes 1-3, J1 les bandes 4-6
     const occupant = [0, 1].find(p => bandOf(s, p) === band);
     const strip = document.createElement('div');
     strip.className = `strip z${zone}` + (occupant !== undefined ? ' current' : '');
-    strip.innerHTML = `<div class="name">Bande ${band}<br>Zone ${zone} — camp J${owner + 1}</div>
+    strip.innerHTML = `<div class="name">Bande ${row}<br>Zone ${zone} — camp J${owner + 1}</div>
       <div class="row-cards"></div><div class="total"></div>`;
     if (occupant !== undefined) {
       const row = strip.querySelector('.row-cards');
@@ -356,8 +378,10 @@ function render() {
     mh.appendChild(c);
   });
 
-  $('message').textContent = message;
-  $('btn-pass').disabled = handHidden || s.phase !== 'play';
+  $('message').textContent = [message, online && !myTurn && s.phase === 'play' ? "Tour de l'adversaire" : '']
+    .filter(Boolean).join(' — ');
+  mh.classList.toggle('wait', !!online && !myTurn);
+  $('btn-pass').disabled = handHidden || s.phase !== 'play' || !myTurn;
   // Passer en étant strictement derrière fait perdre la manche : on l'écrit clairement
   $('btn-pass').textContent = total(s, me) < total(s, opp) ? 'Perdre' : 'Passer';
 }
